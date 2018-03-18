@@ -2,49 +2,88 @@ pragma solidity ^0.4.18;
 
 contract Bank {
     event AddedAccount(uint accNo);
+    event UserApplied(string name);
+
+    address creator; // The bank address
+
+    function Bank() public {
+        creator = msg.sender;
+    }
 
     struct Account {
         uint balance;
         uint accNo;
     }
 
-    struct AccountHolder {
+    struct User {
         string name;
-        Account account;  
+        address addr;
+        // Account account;
     }
 
     uint numAccounts;
+    uint numUsers;
 
     mapping (uint => Account) accounts;
-    mapping (uint => AccountHolder) accHolders;
+    // mapping (address => Account) accounts;
+    mapping (uint => User) applicants;
+    mapping (uint => User) clients;
     
     /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
      *  These functions perform transactions, editing the mappings *
      * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    function addAccount(string name) public {
-        // candidateID is the return variable
-        uint accNo = numAccounts++;
-
-        accounts[accNo] = Account(100, accNo);
-        accHolders[accNo] = AccountHolder(name, accounts[accNo]);
-
-        AddedAccount(accNo);
+    function applyForAccount(string name) public {
+        applicants[numUsers++ + 1] = User(name, msg.sender);
+        // TODO: call userApplied event here
     }
+
+    function approveAccount(uint uid) public {
+        require(msg.sender == creator);
+    
+        accounts[uid] = Account(500, uid);
+        numAccounts++;
+        clients[uid] = applicants[uid];
+        delete applicants[uid];
+    }
+
+    function removeApplicant(uint uid) public {
+        require(msg.sender == creator);
+        
+        delete applicants[uid];        
+    }
+
+    function deposit(uint amount, uint accNo) public {
+        require(msg.sender == clients[accNo].addr);
+
+        accounts[accNo].balance += accounts[accNo].balance + amount;
+    }
+
+    function withdraw(uint amount, uint accNo) public {
+        if (clients[accNo].addr == msg.sender) {
+            accounts[accNo].balance -= amount;
+        }
+    }
+
 
     /* * * * * * * * * * * * * * * * * * * * * * * * * * 
      *  Getter Functions, marked by the key word "view" *
      * * * * * * * * * * * * * * * * * * * * * * * * * */
-    
+
     function showAccount(uint accNo) view public returns (uint, uint) {
+        require(msg.sender == clients[accNo].addr || msg.sender == creator);
+        
         return (accounts[accNo].balance, accounts[accNo].accNo);
     }
 
-    function showAccHolderInfo(uint accNo) view public returns (string, uint) {
-        return (accHolders[accNo].name, accHolders[accNo].account.accNo);
+    function showClientInfo(uint accNo) view public returns (string, address) {
+        require(msg.sender == clients[accNo].addr || msg.sender == creator);
+        
+        return (clients[accNo].name, clients[accNo].addr);
     }
 
     function getNumAccounts() public view returns(uint) {
         return numAccounts;
     }
+    
 }
