@@ -1,11 +1,11 @@
 pragma solidity ^0.4.18;
 
 contract Bank {
-    event AddedAccount(uint accNo);
-    event UserApplied(string name);
+    // event AddedAccount();
 
     address private creator; // The bank address
     uint minBal = 50;
+    uint private numAccounts;
 
     function Bank() public {
         creator = msg.sender;
@@ -13,34 +13,28 @@ contract Bank {
 
     struct Account {
         uint balance;
-        uint accNo;
+        // string holderName;
+        bool exists;
     }
 
-    struct User {
-        string name;
-        address addr;
-        // Account account;
-    }
-
-    uint numAccounts;
-    uint numUsers;
-
-    mapping (uint => Account) accounts;
-    // mapping (address => Account) accounts;
-    mapping (uint => User) applicants;
-    mapping (uint => User) clients;
+    mapping (address => Account) accounts;
 
     /* * * * * * * * * * * * *
      *    Modifier Guards    *
      * * * * * * * * * * * * */
 
-     modifier balanceGuard(uint curBal, uint amount) {
-         require((amount + minBal) < curBal);
+     modifier balanceGuard(uint amount) {
+         require((amount + minBal) < accounts[msg.sender].balance);
          _;
      }
 
-     modifier addressGuard(address addr) {
-         require(msg.sender == addr);
+     modifier recepientGuard(address addr) {
+         require(accounts[addr].exists);
+         _;
+     }
+
+     modifier accountExistsGuard(bool test) {
+         require(accounts[msg.sender].exists == test);
          _;
      }
 
@@ -49,31 +43,27 @@ contract Bank {
      *  These functions perform transactions, editing the mappings *
      * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    function applyForAccount(string name) public {
-        applicants[numUsers++ + 1] = User(name, msg.sender);
-        // TODO: call userApplied event here
-    }
-
-    function approveAccount(uint uid) public addressGuard(creator) {
-        
-    
-        accounts[uid] = Account(500, uid);
+    function createAccount(uint initBal) public accountExistsGuard(false) {
+        accounts[msg.sender] = Account(initBal, true);
         numAccounts++;
-        clients[uid] = applicants[uid];
-        delete applicants[uid];
     }
 
-    function removeApplicant(uint uid) public addressGuard(creator) {
-        delete applicants[uid];        
+    function deleteAccount() public accountExistsGuard(true) {
+        delete accounts[msg.sender];
+        numAccounts--;
     }
 
-    function deposit(uint amount, uint accNo) public addressGuard(clients[accNo].addr) {
-
-        accounts[accNo].balance += amount;
+    function deposit(uint amount) public accountExistsGuard(true) {
+        accounts[msg.sender].balance += amount;
     }
 
-    function withdraw(uint amount, uint accNo) public addressGuard(clients[accNo].addr) balanceGuard(accounts[accNo].balance, amount) {
-        accounts[accNo].balance -= amount;        
+    function withdraw(uint amount) public accountExistsGuard(true) balanceGuard(amount) {
+        accounts[msg.sender].balance -= amount;
+    }
+
+    function transfer(uint amount, address toAddr) public accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) {
+        accounts[msg.sender].balance -= amount;
+        accounts[toAddr].balance += amount;
     }
 
 
@@ -81,16 +71,8 @@ contract Bank {
      *  Getter Functions, marked by the key word "view" *
      * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    function showAccount(uint accNo) view public returns (uint, uint) {
-        require(msg.sender == clients[accNo].addr || msg.sender == creator);
-        
-        return (accounts[accNo].balance, accounts[accNo].accNo);
-    }
-
-    function showClientInfo(uint accNo) view public returns (string, address) {
-        require(msg.sender == clients[accNo].addr || msg.sender == creator);
-        
-        return (clients[accNo].name, clients[accNo].addr);
+    function showAccount() view public accountExistsGuard(true) returns (uint, address) {
+        return (accounts[msg.sender].balance, msg.sender);
     }
 
     function getNumAccounts() public view returns(uint) {
