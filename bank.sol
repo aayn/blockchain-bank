@@ -25,7 +25,7 @@ contract Bank {
      * * * * * * * * * * * * */
 
      modifier balanceGuard(uint amount) {
-         require((amount + minBal) < accounts[msg.sender].balance);
+         require((amount + minBal) <= accounts[msg.sender].balance);
          _;
      }
 
@@ -44,10 +44,10 @@ contract Bank {
      *  These functions perform transactions, editing the mappings *
      * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-    function createAccount(uint initBal) public accountExistsGuard(false) {
-        accounts[msg.sender] = Account(initBal, true);
+    function createAccount() public payable accountExistsGuard(false) {
+        accounts[msg.sender] = Account(msg.value, true);
         numAccounts++;
-        emit AccountCreated(msg.sender);
+        // emit AccountCreated(msg.sender);
     }
 
     function deleteAccount() public accountExistsGuard(true) {
@@ -55,18 +55,19 @@ contract Bank {
         numAccounts--;
     }
 
-    function deposit(uint amount) public accountExistsGuard(true) {
-        accounts[msg.sender].balance += amount;
+    function deposit() public payable accountExistsGuard(true) {
+        accounts[msg.sender].balance += msg.value;
     }
 
     function withdraw(uint amount) public accountExistsGuard(true) balanceGuard(amount) {
+        msg.sender.transfer(amount);
         accounts[msg.sender].balance -= amount;
     }
 
     function transfer(uint amount, address toAddr) public accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) {
         accounts[msg.sender].balance -= amount;
         accounts[toAddr].balance += amount;
-        emit TransferSuccessful(msg.sender, toAddr);
+        //emit TransferSuccessful(msg.sender, toAddr);
     }
 
 
