@@ -1,7 +1,8 @@
 pragma solidity ^0.4.18;
 
 contract Bank {
-    // event AddedAccount();
+    event AccountCreated(address);
+    event TransferSuccessful(address, address);
 
     address private creator; // The bank address
     uint minBal = 50;
@@ -46,6 +47,7 @@ contract Bank {
     function createAccount(uint initBal) public accountExistsGuard(false) {
         accounts[msg.sender] = Account(initBal, true);
         numAccounts++;
+        emit AccountCreated(msg.sender);
     }
 
     function deleteAccount() public accountExistsGuard(true) {
@@ -64,6 +66,7 @@ contract Bank {
     function transfer(uint amount, address toAddr) public accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) {
         accounts[msg.sender].balance -= amount;
         accounts[toAddr].balance += amount;
+        emit TransferSuccessful(msg.sender, toAddr);
     }
 
 
