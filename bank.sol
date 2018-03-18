@@ -4,7 +4,8 @@ contract Bank {
     event AddedAccount(uint accNo);
     event UserApplied(string name);
 
-    address creator; // The bank address
+    address private creator; // The bank address
+    uint minBal = 50;
 
     function Bank() public {
         creator = msg.sender;
@@ -28,6 +29,21 @@ contract Bank {
     // mapping (address => Account) accounts;
     mapping (uint => User) applicants;
     mapping (uint => User) clients;
+
+    /* * * * * * * * * * * * *
+     *    Modifier Guards    *
+     * * * * * * * * * * * * */
+
+     modifier balanceGuard(uint curBal, uint amount) {
+         require((amount + minBal) < curBal);
+         _;
+     }
+
+     modifier addressGuard(address addr) {
+         require(msg.sender == addr);
+         _;
+     }
+
     
     /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
      *  These functions perform transactions, editing the mappings *
@@ -38,8 +54,8 @@ contract Bank {
         // TODO: call userApplied event here
     }
 
-    function approveAccount(uint uid) public {
-        require(msg.sender == creator);
+    function approveAccount(uint uid) public addressGuard(creator) {
+        
     
         accounts[uid] = Account(500, uid);
         numAccounts++;
@@ -47,22 +63,17 @@ contract Bank {
         delete applicants[uid];
     }
 
-    function removeApplicant(uint uid) public {
-        require(msg.sender == creator);
-        
+    function removeApplicant(uint uid) public addressGuard(creator) {
         delete applicants[uid];        
     }
 
-    function deposit(uint amount, uint accNo) public {
-        require(msg.sender == clients[accNo].addr);
+    function deposit(uint amount, uint accNo) public addressGuard(clients[accNo].addr) {
 
-        accounts[accNo].balance += accounts[accNo].balance + amount;
+        accounts[accNo].balance += amount;
     }
 
-    function withdraw(uint amount, uint accNo) public {
-        if (clients[accNo].addr == msg.sender) {
-            accounts[accNo].balance -= amount;
-        }
+    function withdraw(uint amount, uint accNo) public addressGuard(clients[accNo].addr) balanceGuard(accounts[accNo].balance, amount) {
+        accounts[accNo].balance -= amount;        
     }
 
 
