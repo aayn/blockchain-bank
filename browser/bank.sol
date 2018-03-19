@@ -5,6 +5,8 @@ import "browser/payment_standard.sol";
 contract Bank is PaymentStandard {
     event AccountCreated(address);
     event TransferSuccessful(address, address);
+    event DepositSuccessful(address);
+    event WithdrawSuccessful(address);
 
     uint private minBal = 50;
     uint private numAccounts;
@@ -13,12 +15,12 @@ contract Bank is PaymentStandard {
     uint private withdrawLim = 5 ether;
 
 
-    struct Account {
+    struct AccountInfo {
         uint balance;
         bool exists;
     }
 
-    mapping (address => Account) accounts;
+    mapping (address => AccountInfo) accounts;
 
      modifier balanceGuard(uint amount) {
          require((amount + minBal) <= accounts[msg.sender].balance);
@@ -41,8 +43,8 @@ contract Bank is PaymentStandard {
      }
 
 
-    function createAccount() public payable accountExistsGuard(false) {
-        accounts[msg.sender] = Account(msg.value, true);
+    function registerAccount() external payable accountExistsGuard(false) {
+        accounts[msg.sender] = AccountInfo(msg.value, true);
         numAccounts++;
         emit AccountCreated(msg.sender);
     }
@@ -54,26 +56,17 @@ contract Bank is PaymentStandard {
 
     function deposit() external payable accountExistsGuard(true) limitGuard(msg.value, depositLim) {
         accounts[msg.sender].balance += msg.value;
-    }
-
-    function isJointAcc(address addr) internal view returns (bool) {
-        uint size;
-        assembly { size := extcodesize(addr) }
-        return size > 0;
+        emit DepositSuccessful(msg.sender);
     }
 
     function withdraw(uint amount) external accountExistsGuard(true) balanceGuard(amount) limitGuard(amount, withdrawLim) {
-        if (isJointAcc(msg.sender)) {
-            JointAccount ja = JointAccount(msg.sender);
-            ja.receive.value(amount)();
-        } else {
-            msg.sender.transfer(amount);
-        }
+        Account acc = Account(msg.sender);
+        acc.receive.value(amount)();
         accounts[msg.sender].balance -= amount;
+        emit WithdrawSuccessful(msg.sender);
     }
 
-
-    function transfer(uint amount, address toAddr) external accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) limitGuard(amount, depositLim) {
+    function transfer(uint amount, address toAddr) external accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) limitGuard(amount, transferLim) {
         accounts[msg.sender].balance -= amount;
         accounts[toAddr].balance += amount;
         emit TransferSuccessful(msg.sender, toAddr);
@@ -85,30 +78,35 @@ contract Bank is PaymentStandard {
         return (accounts[msg.sender].balance, msg.sender);
     }
 
-    function getNumAccounts() public view returns(uint) {
+    function getNumAccounts() external view returns(uint) {
         return numAccounts;
     }
     
-    function showBankAddress() view public returns(address) {
+    function showBankAddress() view external returns(address) {
         return this;
     }
 
 }
 
 
-contract JointAccount {
+contract Account {
     address[] owners;
     mapping (address => bool) exists;
     mapping (address => bool) approvals;
+    bool private jointAccount = false;
     Bank bank;
 
-    function JointAccount(address[] _owners, address bankAddr) public {
+    function Account(address[] _owners, address bankAddr) public {
         owners.push(msg.sender);
         exists[msg.sender] = true;
-        for (uint8 i = 0; i < _owners.length; i++) {
-            owners.push(_owners[i]);
-            exists[_owners[i]] = true;
-        }
+
+        if (_owners.length > 0) {
+            jointAccount = true;
+            for (uint8 i = 0; i < _owners.length; i++) {
+                owners.push(_owners[i]);
+                exists[_owners[i]] = true;
+            }
+        }        
         bank = Bank(bankAddr);
     }
 
@@ -130,18 +128,21 @@ contract JointAccount {
     }
 
     modifier approveGuard() {
-        require(allApprove());
+        if (jointAccount)
+            require(allApprove());
         _;
     }
 
     function resetApprovals() internal {
-        for (uint8 i = 0; i < owners.length; i++) {
-            approvals[owners[i]] = false;
+        if (jointAccount) {
+            for (uint8 i = 0; i < owners.length; i++) {
+                approvals[owners[i]] = false;
+            }
         }
     }
 
     function registerAccount() public payable ownerGuard approveGuard {
-        bank.createAccount.value(msg.value)();
+        bank.registerAccount.value(msg.value)();
         resetApprovals();
     }
 
@@ -162,6 +163,7 @@ contract JointAccount {
 
     function deleteAccount() public ownerGuard approveGuard {
         bank.deleteAccount();
+        resetApprovals();
     }
 
     /* Getter Functions */
