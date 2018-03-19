@@ -43,7 +43,7 @@ contract Bank is PaymentStandard {
      }
 
 
-    function registerAccount() external payable accountExistsGuard(false) {
+    function registerAccount() external payable accountExistsGuard(false) limitGuard(msg.value, depositLim) {
         accounts[msg.sender] = AccountInfo(msg.value, true);
         numAccounts++;
         emit AccountCreated(msg.sender);
