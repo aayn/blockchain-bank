@@ -2,25 +2,23 @@ pragma solidity ^0.4.18;
 import "browser/payment_standard.sol";
 
 
-contract Bank {
+contract Bank is PaymentStandard {
     event AccountCreated(address);
     event TransferSuccessful(address, address);
 
-    // address private creator;
-    uint minBal = 50;
+    uint private minBal = 50;
     uint private numAccounts;
+    uint private depositLim = 10 ether;
+    uint private transferLim = 7 ether;
+    uint private withdrawLim = 5 ether;
+
 
     struct Account {
         uint balance;
-        // string holderName;
         bool exists;
     }
 
     mapping (address => Account) accounts;
-
-    /* * * * * * * * * * * * *
-     *    Modifier Guards    *
-     * * * * * * * * * * * * */
 
      modifier balanceGuard(uint amount) {
          require((amount + minBal) <= accounts[msg.sender].balance);
@@ -37,15 +35,16 @@ contract Bank {
          _;
      }
 
-    
-    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-     *  These functions perform transactions, editing the mappings *
-     * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+     modifier limitGuard(uint amount, uint limit) {
+         require(amount <= limit);
+         _;
+     }
+
 
     function createAccount() public payable accountExistsGuard(false) {
         accounts[msg.sender] = Account(msg.value, true);
         numAccounts++;
-        // emit AccountCreated(msg.sender);
+        emit AccountCreated(msg.sender);
     }
 
     function deleteAccount() public accountExistsGuard(true) {
@@ -53,7 +52,7 @@ contract Bank {
         numAccounts--;
     }
 
-    function deposit() external payable accountExistsGuard(true) {
+    function deposit() external payable accountExistsGuard(true) limitGuard(msg.value, depositLim) {
         accounts[msg.sender].balance += msg.value;
     }
 
@@ -63,7 +62,7 @@ contract Bank {
         return size > 0;
     }
 
-    function withdraw(uint amount) external accountExistsGuard(true) balanceGuard(amount) {
+    function withdraw(uint amount) external accountExistsGuard(true) balanceGuard(amount) limitGuard(amount, withdrawLim) {
         if (isJointAcc(msg.sender)) {
             JointAccount ja = JointAccount(msg.sender);
             ja.receive.value(amount)();
@@ -74,16 +73,13 @@ contract Bank {
     }
 
 
-    function transfer(uint amount, address toAddr) external accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) {
+    function transfer(uint amount, address toAddr) external accountExistsGuard(true) balanceGuard(amount) recepientGuard(toAddr) limitGuard(amount, depositLim) {
         accounts[msg.sender].balance -= amount;
         accounts[toAddr].balance += amount;
-        //emit TransferSuccessful(msg.sender, toAddr);
+        emit TransferSuccessful(msg.sender, toAddr);
     }
 
-
-    /* * * * * * * * * * * * * * * * * * * * * * * * * * 
-     *  Getter Functions, marked by the key word "view" *
-     * * * * * * * * * * * * * * * * * * * * * * * * * */
+    /* Getter Functions */
 
     function showAccount() view external accountExistsGuard(true) returns (uint, address) {
         return (accounts[msg.sender].balance, msg.sender);
@@ -102,18 +98,21 @@ contract Bank {
 
 contract JointAccount {
     address[] owners;
+    mapping (address => bool) exists;
     mapping (address => bool) approvals;
     Bank bank;
 
     function JointAccount(address[] _owners, address bankAddr) public {
         owners.push(msg.sender);
+        exists[msg.sender] = true;
         for (uint8 i = 0; i < _owners.length; i++) {
             owners.push(_owners[i]);
+            exists[_owners[i]] = true;
         }
         bank = Bank(bankAddr);
     }
 
-    function approve() public {
+    function approve() public ownerGuard {
         approvals[msg.sender] = true;
     }
 
@@ -125,46 +124,54 @@ contract JointAccount {
         return true;
     }
 
+    modifier ownerGuard() {
+        require(exists[msg.sender]);
+        _;
+    }
+
     modifier approveGuard() {
         require(allApprove());
         _;
     }
 
-    function resetApprovals() private {
+    function resetApprovals() internal {
         for (uint8 i = 0; i < owners.length; i++) {
             approvals[owners[i]] = false;
         }
     }
 
-    function registerAccount() public payable approveGuard {
+    function registerAccount() public payable ownerGuard approveGuard {
         bank.createAccount.value(msg.value)();
         resetApprovals();
     }
 
-    function deposit() external payable {
+    function deposit() external payable ownerGuard {
         bank.deposit.value(msg.value)();
     }
 
-    function withdraw(uint amount) external {
+    function withdraw(uint amount) external ownerGuard {
         bank.withdraw(amount);
         msg.sender.transfer(amount);
     }
 
-    function transfer(uint amount, address toAddr) external {
+    function transfer(uint amount, address toAddr) external ownerGuard {
         bank.transfer(amount, toAddr);
     }
 
     function receive() public payable {}
 
-    function deleteAccount() public approveGuard {
+    function deleteAccount() public ownerGuard approveGuard {
         bank.deleteAccount();
     }
 
-    function showAccount() external view returns (uint, address) {
+    /* Getter Functions */
+
+
+    function showAccount() external view ownerGuard returns (uint, address) {
         return bank.showAccount();
     }
 
-    function viewAddress() public view returns(address) {
+    function viewAddress() public view ownerGuard returns(address) {
         return this;
     }
 }
